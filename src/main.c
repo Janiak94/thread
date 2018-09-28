@@ -12,4 +12,5 @@ int main(void){
 	find_roots_exact(1, roots_exact);
 	printf("%d\n", roots_exact[0]);
 	return 0;
+	// test - Filip was here
 }
