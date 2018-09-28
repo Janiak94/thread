@@ -2,6 +2,7 @@
 #include <complex.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define TOL 1e-6
 #define MAX_VAL 1e10
@@ -22,7 +23,6 @@ double complex iterate(double complex x) {
 
 
 int close_to_root(double complex x) {
-	printf("Test 2\n");
 	if (creal(x) > MAX_VAL || creal(x) < -MAX_VAL || cimag(x) > MAX_VAL 
 			|| cimag(x) < - MAX_VAL)
 		return d;
@@ -31,7 +31,6 @@ int close_to_root(double complex x) {
 		if (  creal((x-roots_exact[i])*conj(x-roots_exact[i])) <= TOL )
 			return i;
 	}
-	printf("Test 3 \n");
 	return -1;
 }
 
@@ -49,10 +48,42 @@ int find_root(double complex x_k) {
 	return root_idx;
 }
 
-int main(void){
+int main(int argc, char *argv[]){
 	
+	int number_of_threads;
+	int number_of_points;
+	// =========================
+	// READ ARGUMENTS
+	// =========================
+	if (argc != 4) {
+		printf("ERROR, must have 3 arguments.\n");
+		return -1;
+	} 
+	int arg1 = 0;
+	int arg2 = 0;
+	int arg3 = 0;
+	for (int i = 1; i<4; ++i) {
+		if (memcmp( "-t", argv[i], 2)== 0) {
+			arg1 = 1;
+			number_of_threads = (int) strtol(&argv[i][2], argv, 10);
+		} else if (memcmp( "-l", argv[i], 2)== 0) {
+			arg2 = 1;
+			number_of_points = (int) strtol(&argv[i][2], argv, 10); 
+		} else {
+			// TODO: if not a number
+			arg3 = 1;
+			d = (int) strtol(argv[i], argv, 10);
+		}
+	}
+	if (arg1 * arg2 * arg3 == 0) {
+		printf("ERROR, all 3 arguments must be correct.\n");
+		return -1;
+	}
+	printf("Number of points: %d\n", number_of_points);
+	printf("Number of threads: %d\n", number_of_threads);
+	printf("Exponential power: %d\n", d);
+
 	int debug = 1;
-	d = 3;
 	// =========================
 	// DEFINE CORRECT ROOTS
 	// =========================
