@@ -106,9 +106,6 @@ int main(int argc, char *argv[]){
 			creal(test_number), cimag(test_number),
 			creal(test_answer), cimag(test_answer));
 
-
-	
-	
-
-
+	free(roots_exact);
+	return 0;
 }
