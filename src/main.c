@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+//hej /Tobias
 
 // d is the degree of the polynomial, return exact roots
 void find_roots_exact(int d, double *roots_exact){
