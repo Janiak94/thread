@@ -1,3 +1,8 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <complex.h>
+#include <math.h>
+
 // store the values of the power d in decimal and binary (as a vector)
 // these will have to be declared external if we choose keep this external
 int *d_binary;
@@ -55,7 +60,8 @@ int main(void){
 	binary_rep(d);
 
 	complex double x = 4.0;
-	new_point(&x, d);
+	for(int i = 0; i < 1e8; ++i)
+		new_point(&x, d);
 	printf("Next point: %f\n", creal(x));
 
 	printf("d in binary: ");
