@@ -3,6 +3,10 @@
 #include <complex.h>
 #include <math.h>
 
+// thought: is it better to just calculate powers in a single loop?
+// we only need to calculate up to d = 7, and the if-statesments might
+// impare more than neccessary
+
 // is it possible to optimize even further with respect to
 // gantenbeins two FPU:s?
 // this might not be faster since we perform more operations, we need to
