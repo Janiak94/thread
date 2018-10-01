@@ -49,6 +49,9 @@ void find_root(double complex x_k, int * elem_ptr) {
 	*(elem_ptr + 1) = i;
 }
 
+void root_colors(int d, int * colors){
+	}
+
 int main(int argc, char *argv[]){
 	
 	int number_of_threads;
@@ -130,15 +133,24 @@ int main(int argc, char *argv[]){
 	c_file = fopen(c_file_name, "w");
 	g_file = fopen(g_file_name, "w");
 	
+	int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
+
+	fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
 	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-	int temp;
+	int g_temp;
+	int c_temp[3];
 	for(size_t i = 0; i < number_of_points; ++i){
 		for(size_t j = 0; j < number_of_points*2; j+=2){
-			temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
-			fprintf(g_file, " %d %d %d\t",temp, temp, temp);
+			g_temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
+			c_temp[0] = colors[row_ptr[i][j]][ 0];
+			c_temp[1] = colors[row_ptr[i][j]][ 1];
+			c_temp[2] = colors[row_ptr[i][j]][ 2];
+			fprintf(c_file, " %d %d %d\t", c_temp[0], c_temp[1], c_temp[2]); 
+			fprintf(g_file, " %d %d %d\t", g_temp, g_temp, g_temp);
 			if(0)
 				printf("index: %d, it: %d\n", row_ptr[i][j], row_ptr[i][j+1]);
 		}
+		fprintf(c_file, "\n");
 		fprintf(g_file, "\n");
 	}
 			 
