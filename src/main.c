@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 #define TOL 1e-6
 #define MAX_VAL 1e10
 // Global variables
@@ -35,17 +36,17 @@ int close_to_root(double complex x) {
 }
 
 
-int find_root(double complex x_k) {
+void find_root(double complex x_k, int * elem_ptr) {
 	// TODO: Check condition every other iteration?
 	int root_idx; 
 	int i = 0;
-	printf("Test 1\n");
 	while ( (root_idx = close_to_root(x_k) ) == -1  ) {
 		x_k = iterate(x_k);
-		printf("x_%d = %f + %f i, \n", i, creal(x_k), cimag(x_k));
+		//printf("x_%d = %f + %f i, \n", i, creal(x_k), cimag(x_k));
 		++i;
-	}	
-	return root_idx;
+	}
+	*elem_ptr = root_idx;
+	*(elem_ptr + 1) = i;
 }
 
 int main(int argc, char *argv[]){
@@ -83,6 +84,13 @@ int main(int argc, char *argv[]){
 	printf("Number of threads: %d\n", number_of_threads);
 	printf("Exponential power: %d\n", d);
 
+	//Define data matrix containing both number of interations and root index
+	int * entr = (int*) malloc(sizeof(int)* number_of_points*number_of_points*2);
+	int ** row_ptr = (int**) malloc(sizeof(int*) * number_of_points);
+	for(size_t i = 0; i < number_of_points; ++i){
+		row_ptr[i] = entr + i*2*number_of_points;
+	}
+
 	int debug = 1;
 	// =========================
 	// DEFINE CORRECT ROOTS
@@ -94,18 +102,50 @@ int main(int argc, char *argv[]){
 	// print roots for debugging
 	if (debug) {
 		for (int i = 0; i<d; i++) {
-			printf("Root %d = %f + %f i\n", i, creal(roots_exact[i]), cimag(roots_exact[i]));
+			printf("Root %d = %f + %f i\n", 
+				i, creal(roots_exact[i]), cimag(roots_exact[i]));
 		}
 	}
-
-	// Test iterate function
-	double complex test_number = -3 + 1*I;
-	double complex test_answer = find_root(test_number);
-	if (debug)
+	// Find root index and number of iterations for all points
+	double complex start_point;
+	for(size_t i = 0; i < number_of_points; ++i){
+		for( size_t j = 0; j < number_of_points; ++j){
+			start_point = i/((double)number_of_points-1)*4 -2 +
+				 (j/((double)number_of_points-1)*4 - 2)*I;
+			find_root(start_point, &row_ptr[i][2*j]); 
+		 }
+	}
+	/*if (debug)
 		printf("Test function_f. x = %f + %f i, f(x) = %f + %f i\n", 
 			creal(test_number), cimag(test_number),
 			creal(test_answer), cimag(test_answer));
+	*/
+	FILE *g_file, *c_file;
+	
+	char c_file_name[50];
+	sprintf(c_file_name, "newton_attractors_%d.ppm", d);
+	char g_file_name[50];
+	sprintf(g_file_name,"newton_convergence_%d.ppm", d);
+	
+	c_file = fopen(c_file_name, "w");
+	g_file = fopen(g_file_name, "w");
+	
+	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
+	for(size_t i = 0; i < number_of_points; ++i){
+		for(size_t j = 0; j < number_of_points*2; j+=2){
+			fprintf(g_file, "%d %d %d ",
+				 row_ptr[i][j+1], row_ptr[i][j+1], row_ptr[i][j+1]);
+			if(debug)
+				printf("index: %d, it: %d\n", row_ptr[i][j], row_ptr[i][j+1]);
+		}
+	}
+			 
 
+	fclose(c_file);
+	fclose(g_file);	
+
+	free(entr);
+	free(row_ptr);
 	free(roots_exact);
 	return 0;
 }
