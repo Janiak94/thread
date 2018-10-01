@@ -131,13 +131,15 @@ int main(int argc, char *argv[]){
 	g_file = fopen(g_file_name, "w");
 	
 	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
+	int temp;
 	for(size_t i = 0; i < number_of_points; ++i){
 		for(size_t j = 0; j < number_of_points*2; j+=2){
-			fprintf(g_file, "%d %d %d ",
-				 row_ptr[i][j+1], row_ptr[i][j+1], row_ptr[i][j+1]);
-			if(debug)
+			temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
+			fprintf(g_file, " %d %d %d\t",temp, temp, temp);
+			if(0)
 				printf("index: %d, it: %d\n", row_ptr[i][j], row_ptr[i][j+1]);
 		}
+		fprintf(g_file, "\n");
 	}
 			 
 
