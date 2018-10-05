@@ -14,43 +14,6 @@ unsigned int _current_index = 0;
 pthread_mutex_t index_lock;
 int *entr;
 	
-// f(x) = x^d-1
-__attribute__((always_inline)) double complex iterate(double complex x) {
-	
-	double complex value = 1;
-	for (int i = 0; i<_d-1; ++i) {
-		value *= x;
-	//	printf("Inside f.   Value = %f + %f\n", creal(value), cimag(value));
-	}
-	return x - (value*x - 1)/ (_d*value);;
-}
-
-
-__attribute__((always_inline)) int close_to_root(double complex x) {
-	if (creal(x) > MAX_VAL || creal(x) < -MAX_VAL || cimag(x) > MAX_VAL 
-			|| cimag(x) < - MAX_VAL)
-		return _d;
-
-	for (int i = 0; i<_d; ++i) {
-		if (  creal((x-roots_exact[i])*conj(x-roots_exact[i])) <= TOL )
-			return i;
-	}
-	return -1;
-}
-
-
-__attribute__((always_inline)) void find_root(double complex x_k, int index) {
-	// TODO: Check condition every other iteration?
-	int root_idx; 
-	int i = 0;
-	while ((root_idx = close_to_root(x_k) ) == -1 ) {
-		x_k = iterate(x_k);
-		//printf("x_%d = %f + %f i, \n", i, creal(x_k), cimag(x_k));
-		++i;
-	}
-	entr[2*index] = root_idx;
-	entr[2*index+1] = i;
-}
 
 void *calculation_thread(){
 	//introduce the global variable to the thread stack
@@ -62,29 +25,44 @@ void *calculation_thread(){
 	pthread_mutex_unlock(&index_lock);
 	while(assigned_index < number_of_points*number_of_points){
 		x = dx*(assigned_index%number_of_points) - 2 - I*(dx*(assigned_index/number_of_points) - 2);
+	//	x = 1.01 + I*0.01;
 		i = 0, close_to_root = -1;
 		//calculate the correct amount of iterations
+		double cond;
 		do {
-			for(int j = 0; j < d ; ++j){
-				if(creal((x-roots_exact[j])*conj(x-roots_exact[j])) <= TOL){
-					close_to_root = j;
+			cond = creal(x*conj(x));	
+			if(cond > 1+TOL || cond < 1-TOL){	
+				if(abs(creal(x)) < MAX_VAL && abs(cimag(x)) < MAX_VAL){
+					value = 1.0;
+					for(int k = 0; k < d-1; ++k){
+						value *= x;
+					}
+					x = x - (value*x -1)/(d*value);
+				}else{
+					close_to_root = d;
 					entr[2*assigned_index]=close_to_root;
 					entr[2*assigned_index+1]=i;
+					break;
 				}
-			}
-			if(creal(x) > MAX_VAL || creal(x) < -MAX_VAL || cimag(x) > MAX_VAL || cimag(x) < -MAX_VAL){
-				close_to_root = d;
-				entr[2*assigned_index]=close_to_root;
-				entr[2*assigned_index+1]=i;
-			}
-			if(close_to_root != -1)
-				break;
-			value = 1.0;
-			for(int k = 0; k < d-1; ++k){
-				value *= x;
-			}
-			x = x - (value*x -1)/(d*value);
-			
+			}else{
+				for(int j = 0; j < d ; ++j){
+					if(creal((x-roots_exact[j])*conj(x-roots_exact[j])) <= TOL){
+						close_to_root = j;
+						entr[2*assigned_index]=close_to_root;
+						entr[2*assigned_index+1]=i;
+						break;
+					}
+				}	
+				if(close_to_root != -1){
+					break;
+				}else{
+					value = 1.0;
+					for(int k = 0; k < d-1; ++k){
+						value *= x;
+					}
+					x = x - (value*x -1)/(d*value);
+				}
+			}	
 			++i;
 		}while(1);
 		pthread_mutex_lock(&index_lock);
@@ -184,7 +162,7 @@ int main(int argc, char *argv[]){
 			creal(test_number), cimag(test_number),
 			creal(test_answer), cimag(test_answer));
 	*/
-	
+/*	
 	FILE *g_file, *c_file;
 	
 	char c_file_name[50];
@@ -219,7 +197,7 @@ int main(int argc, char *argv[]){
 
 	fclose(c_file);
 	fclose(g_file);	
-
+*/
 	pthread_mutex_destroy(&index_lock);
 	free(threads);
 	free(entr);
