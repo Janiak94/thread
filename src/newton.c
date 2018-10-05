@@ -6,54 +6,56 @@
 #include <pthread.h>
 #include <time.h>
 
+#define BUFFER_SIZE 1000
 #define TOL 1e-6
 #define MAX_VAL 1e10
 // Global variables
 double complex *roots_exact;
 int _d, _number_of_points;
 unsigned int _current_index = 0;
-pthread_mutex_t index_lock;
+pthread_mutex_t index_lock, completed_lock;
 int *entr, **row_ptr;
 	
 void *printerThread() {
-
-    int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
+	//int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
+	int colors[1][1];
 	int number_of_points = _number_of_points;
-    FILE *g_file, *c_file;
+	FILE *g_file, *c_file;
 	struct timespec sleep_timespec;
 	sleep_timespec.tv_sec = 0;
-	sleep_timespec.tv_nsec = 10;
+	sleep_timespec.tv_nsec = 50;
 
-    char c_file_name[50];
-    sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
-    char g_file_name[50];
-    sprintf(g_file_name,"newton_convergence_x%d.ppm", _d);
+    	char c_file_name[50];
+    	sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
+    	char g_file_name[50];
+    	sprintf(g_file_name,"newton_convergence_x%d.ppm", _d);
     
-    c_file = fopen(c_file_name, "w");
-    g_file = fopen(g_file_name, "w");
+    	c_file = fopen(c_file_name, "w");
+    	g_file = fopen(g_file_name, "w");
 
-    fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-    fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-
-    int g_temp;
-    for (int i = 0; i< number_of_points; ++i) {
-        for (int j = 0; j <number_of_points*2; j+=2) {
-            while(row_ptr[i][j+1] == -1 ||row_ptr[i][j] == -1)  {
-			nanosleep(&sleep_timespec,NULL);	
-		}
-            g_temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
-            fprintf(c_file, " %d %d %d\t", colors[row_ptr[i][j]][0],
-           	 colors[row_ptr[i][j]][1], colors[row_ptr[i][j]][2]); 
-            fprintf(g_file, " %d %d %d\t", g_temp, g_temp, g_temp);
-        }
-        fprintf(c_file, "\n");
-        fprintf(g_file, "\n");
-    }
-    fclose(c_file);
-    fclose(g_file);    
-
-
-    return NULL;
+    	fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
+    	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
+	char red[20], green[20], blue[20], gray[20], buffer[20];
+    	int g_temp;
+    	for (int i = 0; i< number_of_points; ++i) {
+        	for (int j = 0; j <number_of_points*2; j+=2) {
+            		while(row_ptr[i][j+1] == -1 ||row_ptr[i][j] == -1)  {
+				nanosleep(&sleep_timespec,NULL);	
+			}
+			sprintf(buffer,"%d %d %d\t", colors[row_ptr[i][j]][0],colors[row_ptr[i][j]][1],colors[row_ptr[i][j]][2]);
+			sprintf(gray, "%d\t",row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1]);
+            		//fprintf(c_file, " %d %d %d\t", colors[row_ptr[i][j]][0],
+           	 	//colors[row_ptr[i][j]][1], colors[row_ptr[i][j]][2]); 
+            		//fprintf(g_file, " %d %d %d\t", g_temp, g_temp, g_temp);
+            		fwrite(buffer, 1,strlen(red),c_file);
+			fwrite(gray,1,strlen(gray), g_file);
+        	}	
+       		fwrite("\t", 1, 1,c_file);
+       		fwrite("\t", 1, 1, g_file);;
+    	}
+    	fclose(c_file);
+    	fclose(g_file);    
+    	return NULL;
 }
 
 void *calculation_thread(){
@@ -62,52 +64,61 @@ void *calculation_thread(){
 	double dx = 4.0/(number_of_points-1);
 	complex double x, value;
 	pthread_mutex_lock(&index_lock);
-	int assigned_index = _current_index++;
+	//int assigned_index = _current_index++;
+	int assigned_index = _current_index;
+	_current_index+=BUFFER_SIZE;
 	pthread_mutex_unlock(&index_lock);
+	complex double buffer[BUFFER_SIZE];
 	while(assigned_index < number_of_points*number_of_points){
-		x = dx*(assigned_index%number_of_points) - 2 - I*(dx*(assigned_index/number_of_points) - 2);
-	//	x = 1.01 + I*0.01;
-		i = 0, close_to_root = -1;
-		//calculate the correct amount of iterations
-		double cond;
-		do {
-			cond = creal(x*conj(x));	
-			if(cond > 1+TOL || cond < 1-TOL){	
-				if(abs(creal(x)) < MAX_VAL && abs(cimag(x)) < MAX_VAL){
-					value = 1.0;
-					for(int k = 0; k < d-1; ++k){
-						value *= x;
-					}
-					x = x - (value*x -1)/(d*value);
-				}else{
-					close_to_root = d;
-					entr[2*assigned_index]=close_to_root;
-					entr[2*assigned_index+1]=i;
-					break;
-				}
-			}else{
-				for(int j = 0; j < d ; ++j){
-					if(creal((x-roots_exact[j])*conj(x-roots_exact[j])) <= TOL){
-						close_to_root = j;
-						entr[2*assigned_index]=close_to_root;
+		//x = dx*(assigned_index%number_of_points) - 2 - I*(dx*(assigned_index/number_of_points) - 2);
+		for(int n = 0; n < BUFFER_SIZE; ++n){
+			buffer[n] = dx*((assigned_index+n)%number_of_points) - 2 - I*(dx*((assigned_index+n)/number_of_points) - 2);
+		}
+		for(int n = 0; n < BUFFER_SIZE; ++n, ++assigned_index){
+			i = 0, close_to_root = -1;
+			//calculate the correct amount of iterations
+			double cond;
+			do {
+				cond = creal(buffer[n]*conj(buffer[n]));	
+				if(cond > 1+TOL || cond < 1-TOL){	
+					if(abs(creal(buffer[n])) < MAX_VAL && abs(cimag(buffer[n])) < MAX_VAL){
+						value = 1.0;
+						for(int k = 0; k < d-1; ++k){
+							value *= buffer[n];
+						}
+						buffer[n] = buffer[n] - (value*buffer[n] -1)/(d*value);
+					}else{
+						close_to_root = d;
+						entr[2*assigned_index+n]=close_to_root;
 						entr[2*assigned_index+1]=i;
 						break;
 					}
-				}	
-				if(close_to_root != -1){
-					break;
 				}else{
-					value = 1.0;
-					for(int k = 0; k < d-1; ++k){
-						value *= x;
+					for(int j = 0; j < d ; ++j){
+						if(creal((buffer[n]-roots_exact[j])*conj(buffer[n]-roots_exact[j])) <= TOL){
+							close_to_root = j;
+							entr[2*assigned_index]=close_to_root;
+							entr[2*assigned_index+1]=i;
+							break;
+						}
+					}	
+					if(close_to_root != -1){
+						break;
+					}else{
+						value = 1.0;
+						for(int k = 0; k < d-1; ++k){
+							value *= buffer[n];
+						}
+						buffer[n] = buffer[n] - (value*buffer[n] -1)/(d*value);
 					}
-					x = x - (value*x -1)/(d*value);
-				}
-			}	
-			++i;
-		}while(1);
+				}	
+				++i;
+			}while(1);
+		}
 		pthread_mutex_lock(&index_lock);
-		assigned_index = _current_index++;
+		//assigned_index = _current_index++;
+		assigned_index = _current_index;
+		_current_index += BUFFER_SIZE;
 		pthread_mutex_unlock(&index_lock);
 	}	
 	return NULL;
