@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <time.h>
 
 #define TOL 1e-6
 #define MAX_VAL 1e10
@@ -14,15 +15,15 @@ unsigned int _current_index = 0;
 pthread_mutex_t index_lock;
 int *entr, **row_ptr;
 	
-
-
-
 void *printerThread() {
 
     int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
 	int number_of_points = _number_of_points;
     FILE *g_file, *c_file;
-    
+	struct timespec sleep_timespec;
+	sleep_timespec.tv_sec = 0;
+	sleep_timespec.tv_nsec = 10;
+
     char c_file_name[50];
     sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
     char g_file_name[50];
@@ -37,7 +38,9 @@ void *printerThread() {
     int g_temp;
     for (int i = 0; i< number_of_points; ++i) {
         for (int j = 0; j <number_of_points*2; j+=2) {
-            while(row_ptr[i][j+1] == -1 ||row_ptr[i][j] == -1)  {}
+            while(row_ptr[i][j+1] == -1 ||row_ptr[i][j] == -1)  {
+			nanosleep(&sleep_timespec,NULL);	
+		}
             g_temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
             fprintf(c_file, " %d %d %d\t", colors[row_ptr[i][j]][0],
            	 colors[row_ptr[i][j]][1], colors[row_ptr[i][j]][2]); 
