@@ -12,8 +12,46 @@ double complex *roots_exact;
 int _d, _number_of_points;
 unsigned int _current_index = 0;
 pthread_mutex_t index_lock;
-int *entr;
+int *entr, **row_ptr;
 	
+
+
+
+void *printerThread() {
+
+    int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
+	int number_of_points = _number_of_points;
+    FILE *g_file, *c_file;
+    
+    char c_file_name[50];
+    sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
+    char g_file_name[50];
+    sprintf(g_file_name,"newton_convergence_x%d.ppm", _d);
+    
+    c_file = fopen(c_file_name, "w");
+    g_file = fopen(g_file_name, "w");
+
+    fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
+    fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
+
+    int g_temp;
+    for (int i = 0; i< number_of_points; ++i) {
+        for (int j = 0; j <number_of_points*2; j+=2) {
+            while(row_ptr[i][j+1] == -1 ||row_ptr[i][j] == -1)  {}
+            g_temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
+            fprintf(c_file, " %d %d %d\t", colors[row_ptr[i][j]][0],
+           	 colors[row_ptr[i][j]][1], colors[row_ptr[i][j]][2]); 
+            fprintf(g_file, " %d %d %d\t", g_temp, g_temp, g_temp);
+        }
+        fprintf(c_file, "\n");
+        fprintf(g_file, "\n");
+    }
+    fclose(c_file);
+    fclose(g_file);    
+
+
+    return NULL;
+}
 
 void *calculation_thread(){
 	//introduce the global variable to the thread stack
@@ -72,8 +110,6 @@ void *calculation_thread(){
 	return NULL;
 }
 
-void root_colors(int d, int * colors){
-	}
 
 int main(int argc, char *argv[]){
 	
@@ -113,10 +149,13 @@ int main(int argc, char *argv[]){
 	_number_of_points = number_of_points;
 	//Define data matrix containing both number of interations and root index
 	entr = (int*) malloc(sizeof(int)* number_of_points*number_of_points*2);
-	int ** row_ptr = (int**) malloc(sizeof(int*) * number_of_points);
+	row_ptr = (int**) malloc(sizeof(int*) * number_of_points);
 	for(size_t i = 0; i < number_of_points; ++i){
 		row_ptr[i] = entr + i*2*number_of_points;
 	}
+
+	for(size_t i = 0; i< number_of_points*number_of_points*2; ++i) 
+    		entr[i] = -1;
 
 	int debug = 1;
 	// =========================
@@ -135,6 +174,7 @@ int main(int argc, char *argv[]){
 	}*/
 
 	pthread_t *threads = (pthread_t*) malloc(sizeof(pthread_t) * number_of_threads);
+	pthread_t *write_thread;
 	int ret;
 	for(int i = 0; i < number_of_threads; ++i){
 		if(ret =pthread_create(threads+i, NULL, calculation_thread, NULL)){
@@ -142,12 +182,14 @@ int main(int argc, char *argv[]){
 			exit(1);
 		}
 	}
+	pthread_create(&write_thread, NULL, printerThread, NULL);
 	for(int i = 0; i < number_of_threads; ++i){
 		if(ret = pthread_join(threads[i], NULL)){
 			printf("Error joining thread: %d\n", ret);
 			exit(1);
 		}
 	}
+	pthread_join(write_thread,NULL);
 	// Find root index and number of iterations for all points
 	/*double complex start_point;
 	for(size_t i = 0; i < number_of_points; ++i){
