@@ -21,15 +21,16 @@ void itoa_gray(int value, char *str){
 	size_t length=0;
 	if(value/100 != 0){
 		length = 4;
-		str[0] = value/100;
+		str[0] = (char)value/100 + '0';
 		value%=100;
-		str[1] = value/10;
-		str[2] = value%10;
-		str[4] = ' ';
+		str[1] = (char)value/10 + '0';
+		str[2] = value%10 + '0';
+		str[3] = '\0';
+		printf("%s\n",str);
 	}else if(value/10 != 0){
 		length = 3;
-		str[0] = value/10;
-		str[1] = value%10;
+		str[0] = value/10 + '0';
+		str[1] = value%10 + '0';
 		str[2] = ' ';
 	}else if(value == 0){
 		length = 2;
@@ -40,18 +41,23 @@ void itoa_gray(int value, char *str){
 		str[0] = value;
 		str[1] = ' ';
 	}
+	
 	memcpy(str+length, str, length);
 	memcpy(str + 2*length, str, length-1);
-	str[3*length-2] = '\0';
+//	str[3*length-2] = '\0';
 }
 
 void *printerThread() {
 	char *colors[8]= {"255 0 0\t","0 255 0\t","0 0 255\t","255 255 0\t","0 255 255\t","255 0 255\t","120 60 0\t","200 200 50\t"};
-	size_t number_of_points = _number_of_points;
+	int number_of_points = _number_of_points;
 	FILE *g_file, *c_file;
 	struct timespec sleep_timespec;
 	sleep_timespec.tv_sec = 0;
 	sleep_timespec.tv_nsec = 50;
+	char grays[256][20];
+	for(int i = 0; i < 256; ++i){
+		sprintf(grays[i],"%d %d %d\t",i,i,i);
+	}
 
     	char c_file_name[50];
     	sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
@@ -81,8 +87,7 @@ void *printerThread() {
 		}
 		for(int y = 0;y < BUFFER_SIZE;){
 			if(counter <= number_of_points){
-				itoa_gray(255-copy[2*y+1], char_val);
-				strcat(gray, char_val);	
+				strcat(gray, grays[255-copy[2*y+1]]);	
 				strcat(color, colors[copy[2*y]]);
 				counter++;
 				++y;
@@ -110,7 +115,7 @@ void *calculation_thread(){
 	double dx = 4.0/(number_of_points-1);
 	complex double x, value;
 	pthread_mutex_lock(&index_lock);
-	size_t assigned_index = _current_index, out_buffer[2*BUFFER_SIZE];
+	int assigned_index = _current_index, out_buffer[2*BUFFER_SIZE];
 	_current_index+=BUFFER_SIZE;
 	pthread_mutex_unlock(&index_lock);
 	complex double x_buffer[BUFFER_SIZE];
@@ -172,7 +177,7 @@ void *calculation_thread(){
 
 int main(int argc, char *argv[]){
 	int number_of_threads;
-	size_t number_of_points;
+	int number_of_points;
 	if (argc != 4) {
 		printf("ERROR, must have 3 arguments.\n");
 		return -1;
@@ -221,14 +226,14 @@ int main(int argc, char *argv[]){
 			exit(1);
 		}
 	}
-//	pthread_create(write_thread, NULL, printerThread, NULL);
+	pthread_create(write_thread, NULL, printerThread, NULL);
 	for(int i = 0; i < number_of_threads; ++i){
 		if((ret = pthread_join(threads[i], NULL))){
 			printf("Error joining thread: %d\n", ret);
 			exit(1);
 		}
 	}
-//	pthread_join(*write_thread,NULL);
+	pthread_join(*write_thread,NULL);
 
 	pthread_mutex_destroy(&index_lock);
 	free(threads);
