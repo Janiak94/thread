@@ -7,7 +7,7 @@
 #include <time.h>
 
 #define M_PI 3.141592653589793238462643383279502884197169399375105820974
-#define BUFFER_SIZE 500
+#define BUFFER_SIZE 1000
 #define TOL 1e-6
 #define MAX_VAL 1e10
 double complex *roots_exact;
@@ -17,44 +17,14 @@ size_t _current_index = 0;
 pthread_mutex_t index_lock;
 int *entr, **row_ptr;
 
-void itoa_gray(int value, char *str){
-	size_t length=0;
-	if(value/100 != 0){
-		length = 4;
-		str[0] = (char)value/100 + '0';
-		value%=100;
-		str[1] = (char)value/10 + '0';
-		str[2] = value%10 + '0';
-		str[3] = '\0';
-		printf("%s\n",str);
-	}else if(value/10 != 0){
-		length = 3;
-		str[0] = value/10 + '0';
-		str[1] = value%10 + '0';
-		str[2] = ' ';
-	}else if(value == 0){
-		length = 2;
-		str[0] = '0';
-		str[1] = ' ';
-	}else{
-		length = 2;
-		str[0] = value;
-		str[1] = ' ';
-	}
-	
-	memcpy(str+length, str, length);
-	memcpy(str + 2*length, str, length-1);
-//	str[3*length-2] = '\0';
-}
-
 void *printerThread() {
 	char *colors[8]= {"255 0 0\t","0 255 0\t","0 0 255\t","255 255 0\t","0 255 255\t","255 0 255\t","120 60 0\t","200 200 50\t"};
-	int number_of_points = _number_of_points;
+	size_t number_of_points = _number_of_points;
 	FILE *g_file, *c_file;
 	struct timespec sleep_timespec;
 	sleep_timespec.tv_sec = 0;
 	sleep_timespec.tv_nsec = 50;
-	char grays[256][20];
+	char grays[256][256];
 	for(int i = 0; i < 256; ++i){
 		sprintf(grays[i],"%d %d %d\t",i,i,i);
 	}
@@ -69,12 +39,13 @@ void *printerThread() {
 
     	fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
     	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-	char *gray, *color, buffer[50], char_val[12];
+	char *gray, *color, buffer[50];
 	gray = (char*) malloc(50*BUFFER_SIZE);
 	color = (char*) malloc(50*BUFFER_SIZE);
 	int *copy = (int*) malloc(2*BUFFER_SIZE*sizeof(int));
-    	int g_temp,c_temp, counter = 0;
-	for(size_t x = 0; x < 2*BUFFER_SIZE*(number_of_points*number_of_points/BUFFER_SIZE);){
+    	int g_temp,c_temp, counter = 0, total=0;
+	size_t x;
+	for(x = 0; x < 2*BUFFER_SIZE*(number_of_points*number_of_points/BUFFER_SIZE);){
 		pthread_mutex_lock(&index_lock);
 		if(entr[x] != -1){
 			memcpy(copy, &entr[x], 2*BUFFER_SIZE*sizeof(int));
@@ -87,13 +58,14 @@ void *printerThread() {
 		}
 		for(int y = 0;y < BUFFER_SIZE;){
 			if(counter <= number_of_points){
-				strcat(gray, grays[255-copy[2*y+1]]);	
+				strcat(gray, grays[copy[2*y+1] < 255 ? 255-copy[2*y+1]: 0]);	
 				strcat(color, colors[copy[2*y]]);
 				counter++;
 				++y;
 			}else{
 				strcat(gray, "\n");
 				strcat(color, "\n");
+				total+=counter;
 				counter = 0;
 			}
 		}
@@ -102,6 +74,36 @@ void *printerThread() {
 		memset(gray,0,50*BUFFER_SIZE);
 		memset(color,0,50*BUFFER_SIZE);
 	}
+	for(; x < 2*number_of_points*number_of_points;){
+		pthread_mutex_lock(&index_lock);
+		if(entr[x] != -1){
+			memcpy(copy, &entr[x], 2*(number_of_points*number_of_points%BUFFER_SIZE)*sizeof(int));
+			++x;
+		}
+		pthread_mutex_unlock(&index_lock);
+		if(entr[x] == -1){
+			nanosleep(&sleep_timespec, NULL);
+			continue;
+		}
+		for(int y = 0; (x+y) < 2*number_of_points*number_of_points;){
+			if(counter <= number_of_points){
+				strcat(gray, grays[255-copy[2*y+1]]);	
+				strcat(color, colors[copy[2*y]]);
+				counter++;
+				++y;
+			}else{
+				strcat(gray, "\n");
+				strcat(color, "\n");
+				total+=counter;
+				counter = 0;
+			}
+		}
+		fwrite(color, strlen(color),1, c_file);
+		fwrite(gray, strlen(gray),1, g_file);
+		memset(gray,0,50*BUFFER_SIZE);
+		memset(color,0,50*BUFFER_SIZE);
+	}
+	printf("%d\n",total);
     	fclose(c_file);
     	fclose(g_file);
 	free(copy);
@@ -111,11 +113,13 @@ void *printerThread() {
 }
 
 void *calculation_thread(){
-	int number_of_points = _number_of_points, d = _d, i, close_to_root;
+	size_t number_of_points = _number_of_points, d = _d, i;
+	int close_to_root;
 	double dx = 4.0/(number_of_points-1);
 	complex double x, value;
 	pthread_mutex_lock(&index_lock);
-	int assigned_index = _current_index, out_buffer[2*BUFFER_SIZE];
+	size_t assigned_index = _current_index;
+	int out_buffer[2*BUFFER_SIZE];
 	_current_index+=BUFFER_SIZE;
 	pthread_mutex_unlock(&index_lock);
 	complex double x_buffer[BUFFER_SIZE];
@@ -176,8 +180,8 @@ void *calculation_thread(){
 
 
 int main(int argc, char *argv[]){
-	int number_of_threads;
-	int number_of_points;
+	size_t number_of_threads;
+	size_t number_of_points;
 	if (argc != 4) {
 		printf("ERROR, must have 3 arguments.\n");
 		return -1;
