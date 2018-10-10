@@ -6,138 +6,183 @@
 #include <pthread.h>
 #include <time.h>
 
-#define BUFFER_SIZE 1000
 #define TOL 1e-6
 #define MAX_VAL 1e10
-// Global variables
 double complex *roots_exact;
-int _d, _number_of_points;
-unsigned int _current_index = 0;
-pthread_mutex_t index_lock, completed_lock;
-int *entr, **row_ptr;
-	
+unsigned long int _number_of_points, _current_index = 0, BUFFER_SIZE;
+pthread_mutex_t index_lock;
+int *entr, _d;
+
 void *printerThread() {
-	//int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
-	int colors[1][1];
-	int number_of_points = _number_of_points;
+	char *colors[10]= {"255 000 000 ","000 255 000 ","000 000 255 ","255 255 000 ","000 255 255 ","255 000 255 ","120 060 000 ","200 200 050 ", "000 000 000 ", "150 000 150 "};
+	unsigned long int number_of_points = _number_of_points;
 	FILE *g_file, *c_file;
 	struct timespec sleep_timespec;
 	sleep_timespec.tv_sec = 0;
-	sleep_timespec.tv_nsec = 50;
+	sleep_timespec.tv_nsec = 1e5;
+	// assigning gray scale
+	char grays[256][13];
+	for(int i = 0; i < 10; ++i){
+		sprintf(grays[i],"00%i 00%i 00%i ",i,i,i);
+	}
+	for(int i = 10; i < 100; ++i){
+		sprintf(grays[i],"0%d 0%d 0%d ",i,i,i);
+	}
+	for(int i = 100; i < 256; ++i){
+		sprintf(grays[i],"%d %d %d ",i,i,i);
+	}
 
     	char c_file_name[50];
     	sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
     	char g_file_name[50];
     	sprintf(g_file_name,"newton_convergence_x%d.ppm", _d);
-    
+
     	c_file = fopen(c_file_name, "w");
     	g_file = fopen(g_file_name, "w");
 
     	fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
     	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-	char red[20], green[20], blue[20], gray[20], buffer[20];
-    	int g_temp;
-    	for (int i = 0; i< number_of_points; ++i) {
-        	for (int j = 0; j <number_of_points*2; j+=2) {
-            		while(row_ptr[i][j+1] == -1 ||row_ptr[i][j] == -1)  {
-				nanosleep(&sleep_timespec,NULL);	
+	char *gray, *color;
+	gray = (char*) malloc(12*number_of_points+1);
+	color = (char*) malloc(12*number_of_points+1);
+	int *copy = (int*) malloc(2*BUFFER_SIZE*sizeof(int));
+    	int counter = 0;
+	for(unsigned long int x = 0; x < 2*number_of_points*number_of_points;){
+		pthread_mutex_lock(&index_lock);
+		//copy from main buffer to local buffer
+		if(entr[x] != -1){
+			memcpy(copy, &entr[x], 2*BUFFER_SIZE*sizeof(int));
+		}
+		pthread_mutex_unlock(&index_lock);
+		//if no element has been written to main buffer, wait
+		if(entr[x] == -1){
+			nanosleep(&sleep_timespec, NULL);
+			continue;
+		}
+		for(int y = 0; y < 2*BUFFER_SIZE;){
+			//write elements to the line buffer
+			if(counter < number_of_points){
+				memcpy(&gray[12*counter], grays[copy[y+1] < 255 ? copy[y+1] : 0], 12);
+				memcpy(&color[12*counter], colors[copy[y]], 12);
+				++counter;
+				y+=2;
 			}
-			sprintf(buffer,"%d %d %d\t", colors[row_ptr[i][j]][0],colors[row_ptr[i][j]][1],colors[row_ptr[i][j]][2]);
-			sprintf(gray, "%d\t",row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1]);
-            		//fprintf(c_file, " %d %d %d\t", colors[row_ptr[i][j]][0],
-           	 	//colors[row_ptr[i][j]][1], colors[row_ptr[i][j]][2]); 
-            		//fprintf(g_file, " %d %d %d\t", g_temp, g_temp, g_temp);
-            		fwrite(buffer, 1,strlen(red),c_file);
-			fwrite(gray,1,strlen(gray), g_file);
-        	}	
-       		fwrite("\t", 1, 1,c_file);
-       		fwrite("\t", 1, 1, g_file);;
-    	}
+			//write buffer (line) to files
+			else{
+				memcpy(&gray[12*number_of_points], "\n", 1);
+				memcpy(&color[12*number_of_points], "\n", 1);
+				fwrite(gray, 12*number_of_points+1,1, g_file);
+				fwrite(color, 12*number_of_points+1,1, c_file);
+				counter = 0;
+			}
+		}
+		//increment for looå
+		x+=2*BUFFER_SIZE;
+	}
+	//write the last buffer to files
+	fwrite(color, 12*number_of_points+1,1, c_file);
+	fwrite(gray, 12*number_of_points+1,1, g_file);
     	fclose(c_file);
-    	fclose(g_file);    
+    	fclose(g_file);
+	free(copy);
+	free(color);
+	free(gray);
     	return NULL;
 }
 
 void *calculation_thread(){
-	//introduce the global variable to the thread stack
-	int number_of_points = _number_of_points, d = _d, i, close_to_root;
+	unsigned long int number_of_points = _number_of_points;
+	int d = _d, i;
+	int close_to_root;
 	double dx = 4.0/(number_of_points-1);
 	complex double x, value;
 	pthread_mutex_lock(&index_lock);
-	//int assigned_index = _current_index++;
-	int assigned_index = _current_index;
+	unsigned long int assigned_index = _current_index;
+	int out_buffer[2*BUFFER_SIZE];
 	_current_index+=BUFFER_SIZE;
 	pthread_mutex_unlock(&index_lock);
-	complex double buffer[BUFFER_SIZE];
-	while(assigned_index < number_of_points*number_of_points){
-		//x = dx*(assigned_index%number_of_points) - 2 - I*(dx*(assigned_index/number_of_points) - 2);
-		for(int n = 0; n < BUFFER_SIZE; ++n){
-			buffer[n] = dx*((assigned_index+n)%number_of_points) - 2 - I*(dx*((assigned_index+n)/number_of_points) - 2);
+	//buffer that hold precomputed complex values for each pixel
+	complex double x_buffer[BUFFER_SIZE];
+
+	while((unsigned long int) assigned_index < (unsigned long int) number_of_points*number_of_points){
+		//where in the assigned buffer are we?
+		int n;
+		//compute complex value for each pixel in the buffer
+		for(n = 0; n < BUFFER_SIZE; ++n){
+			x_buffer[n] = dx*((assigned_index+n)%number_of_points) - 2 - I*(dx*((assigned_index+n)/number_of_points) - 2);
 		}
-		for(int n = 0; n < BUFFER_SIZE; ++n, ++assigned_index){
+		for(n = 0; n < BUFFER_SIZE; ++n){
 			i = 0, close_to_root = -1;
-			//calculate the correct amount of iterations
 			double cond;
-			do {
-				cond = creal(buffer[n]*conj(buffer[n]));	
-				if(cond > 1+TOL || cond < 1-TOL){	
-					if(abs(creal(buffer[n])) < MAX_VAL && abs(cimag(buffer[n])) < MAX_VAL){
+			//check convergence, break if
+			while(1){
+				cond = creal(x_buffer[n]*conj(x_buffer[n]));
+				//are we outside the ring containing the roots?
+				if(cond > 1+TOL || cond < 1-TOL){
+					//are we still in the search region, if so update the point
+					if(fabs(creal(x_buffer[n])) < MAX_VAL && fabs(cimag(x_buffer[n])) < MAX_VAL){
 						value = 1.0;
 						for(int k = 0; k < d-1; ++k){
-							value *= buffer[n];
+							value *= x_buffer[n];
 						}
-						buffer[n] = buffer[n] - (value*buffer[n] -1)/(d*value);
-					}else{
+						x_buffer[n] = x_buffer[n] - (value*x_buffer[n] -1)/(d*value);
+					}
+					//we have diverged and end the iterations
+					else{
 						close_to_root = d;
-						entr[2*assigned_index+n]=close_to_root;
-						entr[2*assigned_index+1]=i;
+						out_buffer[2*n] = close_to_root;
+						out_buffer[2*n+1] = i;
 						break;
 					}
-				}else{
+				}
+				//we are in the ring that contains all roots
+				else{
+					//which root are we close to?
 					for(int j = 0; j < d ; ++j){
-						if(creal((buffer[n]-roots_exact[j])*conj(buffer[n]-roots_exact[j])) <= TOL){
+						if(creal((x_buffer[n]-roots_exact[j])*conj(x_buffer[n]-roots_exact[j])) <= TOL){
 							close_to_root = j;
-							entr[2*assigned_index]=close_to_root;
-							entr[2*assigned_index+1]=i;
+							out_buffer[2*n] = close_to_root;
+							out_buffer[2*n+1] = i;
 							break;
 						}
-					}	
+					}
+					//if root found, break
 					if(close_to_root != -1){
 						break;
-					}else{
+					}
+					//update the point
+					else{
 						value = 1.0;
 						for(int k = 0; k < d-1; ++k){
-							value *= buffer[n];
+							value *= x_buffer[n];
 						}
-						buffer[n] = buffer[n] - (value*buffer[n] -1)/(d*value);
+						x_buffer[n] = x_buffer[n] - (value*x_buffer[n] -1)/(d*value);
 					}
-				}	
+				}
+				//increment number of iterations
 				++i;
-			}while(1);
+			}
 		}
+		//put in main buffer when all points in local buffer are calculated and assign a new buffer
 		pthread_mutex_lock(&index_lock);
-		//assigned_index = _current_index++;
+		memcpy(&entr[2*assigned_index], out_buffer, 2*BUFFER_SIZE*sizeof(int));
 		assigned_index = _current_index;
 		_current_index += BUFFER_SIZE;
 		pthread_mutex_unlock(&index_lock);
-	}	
+	}
 	return NULL;
 }
 
 
 int main(int argc, char *argv[]){
-	
-	int number_of_threads;
-	int number_of_points;
-	// =========================
-	// READ ARGUMENTS
-	// =========================
+	size_t number_of_threads;
+	unsigned long int number_of_points;
 	if (argc != 4) {
 		printf("ERROR, must have 3 arguments.\n");
 		return -1;
-	} 
+	}
 	int arg1 = 0;
-	int arg2 = 0;
+	unsigned long int arg2 = 0;
 	int arg3 = 0;
 	for (int i = 1; i<4; ++i) {
 		if (memcmp( "-t", argv[i], 2)== 0) {
@@ -145,9 +190,8 @@ int main(int argc, char *argv[]){
 			number_of_threads = (int) strtol(&argv[i][2], argv, 10);
 		} else if (memcmp( "-l", argv[i], 2)== 0) {
 			arg2 = 1;
-			number_of_points = (int) strtol(&argv[i][2], argv, 10); 
+			number_of_points = (unsigned long int) strtol(&argv[i][2], argv, 10);
 		} else {
-			// TODO: if not a number
 			arg3 = 1;
 			_d = (int) strtol(argv[i], argv, 10);
 		}
@@ -156,108 +200,51 @@ int main(int argc, char *argv[]){
 		printf("ERROR, all 3 arguments must be correct.\n");
 		return -1;
 	}
-	/*printf("Number of points: %d\n", number_of_points);
-	printf("Number of threads: %d\n", number_of_threads);
-	printf("Exponential power: %d\n", _d);*/
-	
 	_number_of_points = number_of_points;
-	//Define data matrix containing both number of interations and root index
+	//make each buffer a row long
+	BUFFER_SIZE = number_of_points;
 	entr = (int*) malloc(sizeof(int)* number_of_points*number_of_points*2);
-	row_ptr = (int**) malloc(sizeof(int*) * number_of_points);
-	for(size_t i = 0; i < number_of_points; ++i){
-		row_ptr[i] = entr + i*2*number_of_points;
+
+	//set all values of the main buffer to -1 to indicate that they have not been set
+	for(unsigned long int i = 0; i< (unsigned long int) number_of_points*number_of_points*2; ++i){
+    		entr[i] = -1;
 	}
 
-	for(size_t i = 0; i< number_of_points*number_of_points*2; ++i) 
-    		entr[i] = -1;
-
-	int debug = 1;
-	// =========================
-	// DEFINE CORRECT ROOTS
-	// =========================
 	roots_exact = (double complex *) malloc(sizeof(double complex) * _d);
 	for (int i = 0; i<_d; ++i) {
 		roots_exact[i] = cos(2*M_PI*i/_d) + sin(2*M_PI*i/_d) * I;
 	}
-	// print roots for debugging
-	/*if (debug) {
-		for (int i = 0; i<d; i++) {
-			printf("Root %d = %f + %f i\n", 
-				i, creal(roots_exact[i]), cimag(roots_exact[i]));
-		}
-	}*/
 
+	//allocate memory for threads
 	pthread_t *threads = (pthread_t*) malloc(sizeof(pthread_t) * number_of_threads);
-	pthread_t *write_thread;
+	pthread_t *write_thread = (pthread_t*) malloc(sizeof(pthread_t));
 	int ret;
+	//create threads
 	for(int i = 0; i < number_of_threads; ++i){
-		if(ret =pthread_create(threads+i, NULL, calculation_thread, NULL)){
+		if((ret =pthread_create(threads+i, NULL, calculation_thread, NULL))){
 			printf("Error creating thread: %d\n", ret);
 			exit(1);
 		}
 	}
-	pthread_create(&write_thread, NULL, printerThread, NULL);
+	if((ret = pthread_create(write_thread, NULL, printerThread, NULL))){
+		printf("Error creating thread: %d\n", ret);
+		exit(1);
+	}
+	//join threads
 	for(int i = 0; i < number_of_threads; ++i){
-		if(ret = pthread_join(threads[i], NULL)){
+		if((ret = pthread_join(threads[i], NULL))){
 			printf("Error joining thread: %d\n", ret);
 			exit(1);
 		}
 	}
-	pthread_join(write_thread,NULL);
-	// Find root index and number of iterations for all points
-	/*double complex start_point;
-	for(size_t i = 0; i < number_of_points; ++i){
-		for( size_t j = 0; j < number_of_points; ++j){
-			start_point = i/((double)number_of_points-1)*4 -2 +
-				 (j*4/((double)number_of_points-1) - 2)*I;
-			find_root(start_point, &row_ptr[i][2*j]); 
-		 }
-	}*/
-	/*if (debug)
-		printf("Test function_f. x = %f + %f i, f(x) = %f + %f i\n", 
-			creal(test_number), cimag(test_number),
-			creal(test_answer), cimag(test_answer));
-	*/
-/*	
-	FILE *g_file, *c_file;
-	
-	char c_file_name[50];
-	sprintf(c_file_name, "newton_attractors_x%d.ppm", _d);
-	char g_file_name[50];
-	sprintf(g_file_name,"newton_convergence_x%d.ppm", _d);
-	
-	c_file = fopen(c_file_name, "w");
-	g_file = fopen(g_file_name, "w");
-	
-	int colors[6][3]={{255,0,0},{0,255,0},{0,0,255},{255,255,0},{0,255,255},{255,0,255}};
-
-	fprintf(c_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-	fprintf(g_file, "P3\n%d %d\n255\n", number_of_points, number_of_points);
-	int g_temp;
-	int c_temp[3];
-	for(size_t i = 0; i < number_of_points; ++i){
-		for(size_t j = 0; j < number_of_points*2; j+=2){
-			g_temp = row_ptr[i][j+1] > 255 ? 0 : 255 - row_ptr[i][j+1];
-			c_temp[0] = colors[row_ptr[i][j]][ 0];
-			c_temp[1] = colors[row_ptr[i][j]][ 1];
-			c_temp[2] = colors[row_ptr[i][j]][ 2];
-			fprintf(c_file, " %d %d %d\t", c_temp[0], c_temp[1], c_temp[2]); 
-			fprintf(g_file, " %d %d %d\t", g_temp, g_temp, g_temp);
-			if(0)
-				printf("index: %d, it: %d\n", row_ptr[i][j], row_ptr[i][j+1]);
-		}
-		fprintf(c_file, "\n");
-		fprintf(g_file, "\n");
+	if((ret = pthread_join(*write_thread,NULL))){
+		printf("Error creating thread: %d\n", ret);
+		exit(1);
 	}
-			 
-
-	fclose(c_file);
-	fclose(g_file);	
-*/
 	pthread_mutex_destroy(&index_lock);
 	free(threads);
+	free(write_thread);
 	free(entr);
-	free(row_ptr);
 	free(roots_exact);
 	return 0;
 }
